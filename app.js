@@ -395,6 +395,7 @@
     $("sourceNote").textContent=paletteIsFallback
       ? "Approximate colors · logo analysis temporarily unavailable."
       : "Measured from the logo · transparent pixels excluded.";
+    updateSubmit();
   }
   function normalize(str){
     return (str||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
