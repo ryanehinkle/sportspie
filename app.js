@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  /* Format: league | ESPN logo ID | city | nickname | fallback primary | fallback secondary */
+  /* Bundled pro teams, plus the generated 2026 FBS catalog. All logo files are self-hosted. */
   const TEAM_ROWS = [
     "NFL|ari|Arizona|Cardinals|#97233F|#000000",
     "NFL|atl|Atlanta|Falcons|#A71930|#000000",
@@ -133,18 +133,17 @@
     "MLB|wsh|Washington|Nationals|#AB0003|#14225A"
   ];
 
-  const LEAGUE_SPORT = {NFL:"nfl",NHL:"nhl",NBA:"nba",MLB:"mlb"};
-  const ESPN_API = {
-    NFL:"football/nfl", NHL:"hockey/nhl", NBA:"basketball/nba", MLB:"baseball/mlb"
-  };
+  const CFB_TEAMS = window.SPORTSPIE_CFB_TEAMS || [];
+  const PRIMARY_LOGOS = window.SPORTSPIE_LOGO_SOURCES || {};
   const $ = id => document.getElementById(id);
   const teams = TEAM_ROWS.map(row => {
     const [league,abbr,city,nickname,primary,secondary] = row.split("|");
-    const name = city ? city + " " + nickname : nickname;
-    return {league,abbr,city,nickname,name,primary,secondary,
-      key:league + ":" + abbr,
-      logo:"https://a.espncdn.com/i/teamlogos/" + LEAGUE_SPORT[league] + "/500/" + abbr + ".png"};
-  });
+    const name=city ? city+" "+nickname : nickname;
+    return {league,abbr,city,nickname,name,primary,secondary,key:league+":"+abbr,
+      logo:"./assets/logos/"+league.toLowerCase()+"/"+abbr+".png"};
+  }).concat(CFB_TEAMS.map(t=>({
+    ...t,logo:"./assets/logos/cfb/"+t.abbr+".png"
+  })));
   const byKey = Object.fromEntries(teams.map(t => [t.key,t]));
   const STORE_KEY = "sportspie-state-v2";
   // Recompute saved palettes when the extraction method changes; preserve guesses and stats.
@@ -155,12 +154,11 @@
   if(!store.palettes || typeof store.palettes!=="object") store.palettes={};
   if(!store.stats || typeof store.stats!=="object") store.stats={};
   if(!Array.isArray(store.recent)) store.recent=[];
-  let league = ["ALL","NFL","NHL","NBA","MLB"].includes(store.league)?store.league:"ALL";
+  let league = ["ALL","NFL","NHL","NBA","MLB","CFB"].includes(store.league)?store.league:"ALL";
   let mode = ["daily","endless"].includes(store.mode)?store.mode:"daily";
   let day = new Date().toISOString().slice(0,10);
   let current = null,session = null,palette = null,paletteSource = null,loadSerial = 0;
   let selected = null,options = [],optionIndex = -1,toastTimer = null;
-  let logoMapReady = {};
   const MAX_GUESSES=6;
 
   function save(){
@@ -172,7 +170,7 @@
     for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}
     return h>>>0;
   }
-  function dailyKey(){return day+"|"+league;}
+  function dailyKey(){return day+"|"+league+(league==="ALL"?"|cfb2026":"");}
   function dailyAnswer(){
     const choices=pool();
     return choices[hash("SportsPie:v2:"+dailyKey())%choices.length];
@@ -244,25 +242,36 @@
       const active=b.dataset.league===league;b.classList.toggle("active",active);b.setAttribute("aria-pressed",String(active));
     });
   }
+  // Every image on the site uses the *same verified primary logo* that the
+  // pixel analyzer uses. Only fall back to the original URL of that very mark,
+  // never to a dark variant, alternate crest, or a different team's logo.
   function imageCandidates(team){
-    const list=[team.logo];
-    const aliases={
-      "NHL:tb":["tbl"],"NHL:uta":["utah"],"NBA:gs":["gsw"],"NBA:no":["nop"],
-      "NBA:ny":["nyk"],"NBA:sa":["sas"],"NBA:utah":["ut"],
-      "MLB:ath":["oak"],"MLB:la":["lad"],"MLB:laa":["ana"],"NFL:wsh":["was"],
-      "NFL:lv":["oak"],"NFL:lar":["stl"]
+    return [team.logo,PRIMARY_LOGOS[team.key]].filter((src,i,list)=>src&&list.indexOf(src)===i);
+  }
+  function applyTeamLogo(img,team){
+    const candidates=imageCandidates(team);
+    let index=0;
+    img.alt=team.name+" primary logo";
+    img.style.opacity="1";
+    img.hidden=false;
+    img.onerror=()=>{
+      index++;
+      if(index<candidates.length){img.src=candidates[index];return;}
+      // No fabricated substitute image: this state should be caught by the
+      // deploy-time 262-team logo verification.
+      img.onerror=null;
+      img.style.opacity=".25";
+      img.alt=team.name+" logo temporarily unavailable";
     };
-    for(const a of (aliases[team.key]||[])){
-      list.push("https://a.espncdn.com/i/teamlogos/"+LEAGUE_SPORT[team.league]+"/500/"+a+".png");
-    }
-    if(store.logos && store.logos[team.key]) list.unshift(store.logos[team.key]);
-    return [...new Set(list)];
+    img.src=candidates[0];
   }
   function loadImage(url){
     return new Promise((resolve,reject)=>{
       const img=new Image();
       let done=false;
-      const timer=setTimeout(()=>{if(!done){done=true;img.onload=img.onerror=null;reject(new Error("Image timed out"));}},6500);
+      const timer=setTimeout(()=>{
+        if(!done){done=true;img.onload=img.onerror=null;reject(new Error("Image timed out"));}
+      },9000);
       img.crossOrigin="anonymous";
       img.onload=()=>{if(!done){done=true;clearTimeout(timer);resolve(img);}};
       img.onerror=()=>{if(!done){done=true;clearTimeout(timer);reject(new Error("Logo image unavailable"));}};
@@ -270,13 +279,13 @@
     });
   }
   async function imageFor(team){
-    let err;
-    for(const src of imageCandidates(team)){
-      try {const img=await loadImage(src);team.logo=src;return img;}catch(e){err=e;}
+    let error;
+    for(const url of imageCandidates(team)){
+      try{return await loadImage(url);}catch(e){error=e;}
     }
-    throw err||new Error("No usable logo");
+    throw error||new Error("No primary team logo could be loaded");
   }
-  function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+    function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
   function toHex(r,g,b){
     return "#"+[r,g,b].map(n=>clamp(Math.round(n),0,255).toString(16).padStart(2,"0")).join("").toUpperCase();
   }
@@ -420,8 +429,8 @@
     session.guesses.forEach((key,i)=>{
       const t=byKey[key];if(!t)return;
       const row=document.createElement("div");row.className="guess-row";
-      const img=document.createElement("img");img.className="guess-logo";img.src=t.logo;
-      img.alt="";img.loading="lazy";img.onerror=()=>{img.style.opacity=".3";};
+      const img=document.createElement("img");img.className="guess-logo";img.loading="lazy";
+      applyTeamLogo(img,t);
       const info=document.createElement("div");info.className="guess-info";
       const name=document.createElement("div");name.className="guess-name";name.textContent=t.name;
       const sub=document.createElement("div");sub.className="guess-league";sub.textContent=t.league+" · Guess "+(i+1);
@@ -496,9 +505,6 @@
       $("teamInput").focus();
     }
   }
-  function logoForDisplay(team){
-    return (store.logos&&store.logos[team.key])||team.logo;
-  }
   function renderEnd(){
     if(!session.complete)return;
     const won=!!session.won;
@@ -511,13 +517,7 @@
       : "The mystery logo has been revealed.";
     $("answerName").textContent=current.name;
     $("answerLeague").textContent=current.league+" · Official team logo";
-    $("answerLogo").src=logoForDisplay(current);
-    $("answerLogo").alt=current.name+" logo";
-    $("answerLogo").onerror=()=>{
-      if($("answerLogo").src!==current.logo) $("answerLogo").src=current.logo;
-      else $("answerLogo").style.opacity=".25";
-    };
-    $("answerLogo").style.opacity="1";
+    applyTeamLogo($("answerLogo"),current);
     $("primaryEndBtn").innerHTML=mode==="daily"?"Share result <span>↗</span>":"Next team <span>→</span>";
     $("secondaryEndBtn").textContent=mode==="daily"?"Play unlimited ↗":"Share result ↗";
     $("endNote").textContent=mode==="daily"?"Come back tomorrow for another daily pie.":"Unlimited mode — play as many as you like.";
@@ -575,48 +575,6 @@
     const h=String(Math.floor(s/3600)).padStart(2,"0"),m=String(Math.floor(s%3600/60)).padStart(2,"0"),sec=String(s%60).padStart(2,"0");
     $("countdownText").textContent="Next in "+h+":"+m+":"+sec;
   }
-  async function hydrateLogos(){
-    // ESPN API is optional: on failure the bundled team roster and CDN paths still work.
-    try{
-      const results=await Promise.allSettled(Object.entries(ESPN_API).map(async ([lg,sport])=>{
-        const response=await fetch("https://site.api.espn.com/apis/site/v2/sports/"+sport+"/teams?limit=40",{mode:"cors"});
-        if(!response.ok)throw new Error("Team API HTTP "+response.status);
-        const data=await response.json();
-        const entries=(data.sports||[]).flatMap(s=>(s.leagues||[]).flatMap(l=>l.teams||[]));
-        return {lg,entries};
-      }));
-      const logos={...(store.logos||{})};
-      for(const item of results){
-        if(item.status!=="fulfilled")continue;
-        const {lg,entries}=item.value;
-        for(const entry of entries){
-          const api=entry.team||entry;
-          const url=(api.logos||[]).find(l=>l.href&&l.rel&&l.rel.includes("default"))?.href||
-            (api.logos||[])[0]?.href;
-          if(!url||!url.startsWith("https://"))continue;
-          const t=teams.find(t=>t.league===lg&&(String(api.abbreviation||"").toLowerCase()===t.abbr||
-            normalize(api.displayName)===normalize(t.name)||
-            normalize(api.name)===normalize(t.nickname)));
-          if(t)logos[t.key]=url;
-        }
-      }
-      store.logos=logos;save();
-      // If the team API resolves a newer primary logo, use that exact image
-      // instead of a stale palette, even if an earlier CDN asset loaded.
-      if(current&&store.logos[current.key]&&paletteSource!==store.logos[current.key]){
-        const serial=loadSerial;
-        getPalette(current).then(result=>{
-          if(serial!==loadSerial)return;
-          palette=result.parts;paletteSource=result.source;renderPie();
-        }).catch(error=>{
-          if(serial!==loadSerial)return;
-          console.warn("Could not analyze resolved primary logo:",error);
-          if(!palette)renderPaletteError();
-        });
-      }
-    }catch(e){ /* fallback asset list handles unavailable API */ }
-  }
-
   document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",()=>{
     if(mode===b.dataset.mode)return;
     mode=b.dataset.mode;store.mode=mode;initGame(false);tick();
@@ -668,6 +626,6 @@
   initGame(false);
   tick();
   setInterval(tick,1000);
-  hydrateLogos();
+  // No runtime logo swapping: build-time verification produces one consistent logo per team.
   console.info("SportsPie loaded:",teams.length,"teams across NFL, NHL, NBA, and MLB.");
 })();
