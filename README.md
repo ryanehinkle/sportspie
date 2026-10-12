@@ -15,9 +15,9 @@ Guess the professional sports team from **the color proportions of its logo**, r
 
 ## How the colors are calculated
 
-Logo images are downloaded from ESPN's publicly accessible team-logo CDN. SportsPie draws the logo on an offscreen canvas, excludes transparent/anti-aliased pixels, groups similar colors, and calculates the relative area covered by each significant color. This provides pie slices **derived from actual logo pixels**. Processed palettes are cached in browser local storage.
+Logo images are downloaded from ESPN's publicly accessible team-logo CDN. SportsPie reads the image at its full native resolution, removes transparent pixels and flat outside backgrounds, weights partially transparent edge pixels by opacity, groups similar shades, and calculates each significant color's share of the visible logo. This provides pie slices **derived from actual logo pixels**. Processed palettes are cached in browser local storage.
 
-The ESPN public teams API is used to resolve current primary team logo image URLs when available. SportsPie samples opaque pixels without canvas interpolation, merges near-identical anti-aliased shades, and assigns every visible pixel to its nearest dominant logo color. If loading, CORS, or analysis fails, a **Retry loading logo colors** control appears instead of inventing proportions. Palettes are versioned so new color calculations replace stale browser caches while leaving results and statistics intact. The app is static and does not use a server, sign-ins, trackers, or a database. Internet access is needed for first-time logo retrieval.
+The ESPN public teams API is used to resolve current primary team logo image URLs when available. SportsPie uses the original-resolution image without resizing, merges near-identical anti-aliased shades, and assigns every visible pixel (including opacity-weighted edges) to its nearest dominant logo color. If loading, CORS, or analysis fails, a **Retry loading logo colors** control appears instead of inventing proportions. Palettes are versioned so new color calculations replace stale browser caches while leaving results and statistics intact. The app is static and does not use a server, sign-ins, trackers, or a database. Internet access is needed for first-time logo retrieval.
 
 ## GitHub Pages setup
 
