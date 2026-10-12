@@ -345,7 +345,7 @@
       wrap.append(swatch,count);$("paletteLegend").append(wrap);
     });
     $("pie").setAttribute("aria-label","Mystery logo color breakdown: "+palette.map((p,i)=>pct[i]+" percent "+p.color).join(", "));
-    $("sourceNote").textContent="Primary team logo · opaque pixels only · similar shades grouped.";
+    $("sourceNote").textContent="Original-size logo pixels · transparent background excluded.";
     updateSubmit();
   }
   function normalize(str){
