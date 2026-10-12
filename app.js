@@ -147,6 +147,8 @@
   });
   const byKey = Object.fromEntries(teams.map(t => [t.key,t]));
   const STORE_KEY = "sportspie-state-v2";
+  // Recompute saved palettes when the extraction method changes; preserve guesses and stats.
+  const PALETTE_VERSION = 3;
   let store;
   try {store=JSON.parse(localStorage.getItem(STORE_KEY)) || {};} catch(e) {store={};}
   if(!store.records || typeof store.records!=="object") store.records={};
@@ -156,7 +158,7 @@
   let league = ["ALL","NFL","NHL","NBA","MLB"].includes(store.league)?store.league:"ALL";
   let mode = ["daily","endless"].includes(store.mode)?store.mode:"daily";
   let day = new Date().toISOString().slice(0,10);
-  let current = null,session = null,palette = null,paletteIsFallback = false,loadSerial = 0;
+  let current = null,session = null,palette = null,paletteSource = null,loadSerial = 0;
   let selected = null,options = [],optionIndex = -1,toastTimer = null;
   let logoMapReady = {};
   const MAX_GUESSES=6;
@@ -202,7 +204,7 @@
         session=store.endlessSession;
       }
     }
-    selected=null; options=[];optionIndex=-1;palette=null;paletteIsFallback=false;
+    selected=null; options=[];optionIndex=-1;palette=null;paletteSource=null;
     $("teamInput").value=""; $("teamInput").disabled=false;
     $("suggestions").hidden=true;$("teamInput").setAttribute("aria-expanded","false");
     $("pie").classList.remove("ready");
@@ -224,12 +226,13 @@
     const request=loadSerial;
     getPalette(current).then(result=>{
       if(request!==loadSerial) return;
-      palette=result.parts;paletteIsFallback=result.fallback;
+      palette=result.parts;paletteSource=result.source;
       renderPie();
       if(session.complete) renderEnd();
-    }).catch(()=>{
+    }).catch(error=>{
       if(request!==loadSerial) return;
-      palette=fallbackPalette(current);paletteIsFallback=true;renderPie();
+      console.warn("SportsPie could not analyze the primary team logo:",error);
+      renderPaletteError();
     });
     save();
   }
@@ -240,12 +243,6 @@
     document.querySelectorAll("[data-league]").forEach(b=>{
       const active=b.dataset.league===league;b.classList.toggle("active",active);b.setAttribute("aria-pressed",String(active));
     });
-  }
-  function fallbackPalette(team){
-    const colors = team.secondary.toLowerCase()==="#ffffff"
-      ? [{color:team.primary,value:.72},{color:"#ffffff",value:.28}]
-      : [{color:team.primary,value:.59},{color:team.secondary,value:.32},{color:"#f5f5f5",value:.09}];
-    return colors;
   }
   function imageCandidates(team){
     const list=[team.logo];
@@ -288,84 +285,105 @@
     return Math.sqrt(dr*dr*.95+dg*dg*1.25+db*db*.8);
   }
   function extractColors(img){
-    const canvas=document.createElement("canvas");canvas.width=128;canvas.height=128;
+    // Work directly from the PRIMARY logo's opaque pixels. Nearest-neighbor
+    // downsampling avoids inventing extra intermediate colors via canvas smoothing.
+    const size=240;
+    const canvas=document.createElement("canvas");
+    canvas.width=size;canvas.height=size;
     const ctx=canvas.getContext("2d",{willReadFrequently:true});
     if(!ctx)throw new Error("Canvas unavailable");
     const w=img.naturalWidth,h=img.naturalHeight;
-    if(!w||!h)throw new Error("Empty image");
-    const scale=Math.min(120/w,120/h),dw=w*scale,dh=h*scale;
-    ctx.clearRect(0,0,128,128);
-    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
-    ctx.drawImage(img,(128-dw)/2,(128-dh)/2,dw,dh);
-    const rgba=ctx.getImageData(0,0,128,128).data;
+    if(!w||!h)throw new Error("Empty logo image");
+    const scale=Math.min((size-8)/w,(size-8)/h);
+    const dw=w*scale,dh=h*scale;
+    ctx.clearRect(0,0,size,size);
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(img,(size-dw)/2,(size-dh)/2,dw,dh);
+    const rgba=ctx.getImageData(0,0,size,size).data;
     const bins=new Map();
     let total=0;
     for(let i=0;i<rgba.length;i+=4){
-      const a=rgba[i+3];if(a<215)continue; // discard transparent and anti-aliased edges
-      let r=rgba[i],g=rgba[i+1],b=rgba[i+2];
-      // Group near-white / near-black tones so small anti-aliasing variations do not become slices.
-      if(r>231&&g>231&&b>231){r=250;g=250;b=250;}
-      else if(r<27&&g<27&&b<27){r=13;g=16;b=23;}
-      const qr=Math.min(255,Math.round(r/20)*20),qg=Math.min(255,Math.round(g/20)*20),qb=Math.min(255,Math.round(b/20)*20);
+      if(rgba[i+3]<245)continue; // omit transparent and semi-transparent edge pixels
+      const r=rgba[i],g=rgba[i+1],b=rgba[i+2];
+      const qr=Math.min(255,Math.round(r/16)*16);
+      const qg=Math.min(255,Math.round(g/16)*16);
+      const qb=Math.min(255,Math.round(b/16)*16);
       const id=(qr<<16)|(qg<<8)|qb;
       const item=bins.get(id)||{r:0,g:0,b:0,n:0};
       item.r+=r;item.g+=g;item.b+=b;item.n++;
       bins.set(id,item);total++;
     }
-    if(total<50)throw new Error("Logo does not contain enough opaque pixels");
-    const sorted=[...bins.values()].sort((a,b)=>b.n-a.n);
-    const clusters=[];
-    for(const bin of sorted){
-      const c={r:bin.r/bin.n,g:bin.g/bin.n,b:bin.b/bin.n};
-      let closest=null,best=Number.POSITIVE_INFINITY;
-      for(const existing of clusters){
-        const d=colorDistance(c,existing);
-        if(d<best){best=d;closest=existing;}
+    if(total<60)throw new Error("Logo has too few opaque pixels for analysis");
+    const entries=[...bins.values()]
+      .map(c=>({r:c.r/c.n,g:c.g/c.n,b:c.b/c.n,n:c.n}))
+      .sort((a,b)=>b.n-a.n);
+    // Only genuinely prevalent, distinct colors can become pie slices.
+    // Close shades (including anti-aliased blacks/greys/whites) share one slice.
+    const seeds=[];
+    const minimumSeedPixels=Math.max(5,Math.ceil(total*.006));
+    for(const entry of entries){
+      if(entry.n<minimumSeedPixels)break;
+      if(!seeds.some(seed=>colorDistance(seed,entry)<60)){
+        seeds.push({r:entry.r,g:entry.g,b:entry.b});
       }
-      if(closest&&best<52){
-        const n=closest.n+bin.n;
-        closest.r=(closest.r*closest.n+bin.r)/n;
-        closest.g=(closest.g*closest.n+bin.g)/n;
-        closest.b=(closest.b*closest.n+bin.b)/n;
-        closest.n=n;
-      }else clusters.push({...c,n:bin.n});
+      if(seeds.length>=10)break;
     }
-    clusters.sort((a,b)=>b.n-a.n);
-    let kept=clusters.filter(c=>c.n/total>=.022).slice(0,7);
-    if(!kept.length)kept=[clusters[0]];
-    // Fold tiny and excess color fragments into the nearest significant slice.
-    for(const c of clusters){
-      if(kept.includes(c))continue;
-      let nearest=kept[0],best=Infinity;
-      for(const k of kept){
-        const d=colorDistance(c,k);
-        if(d<best){best=d;nearest=k;}
+    if(!seeds.length){
+      const top=entries[0];seeds.push({r:top.r,g:top.g,b:top.b});
+    }
+    function allocate(selected){
+      const weights=new Array(selected.length).fill(0);
+      // Count EVERY opaque source pixel; edge shades belong to their nearest
+      // dominant logo color instead of generating additional pie wedges.
+      for(const entry of entries){
+        let nearest=0,best=Infinity;
+        for(let j=0;j<selected.length;j++){
+          const distance=colorDistance(entry,selected[j]);
+          if(distance<best){best=distance;nearest=j;}
+        }
+        weights[nearest]+=entry.n;
       }
-      const n=nearest.n+c.n;
-      nearest.r=(nearest.r*nearest.n+c.r*c.n)/n;
-      nearest.g=(nearest.g*nearest.n+c.g*c.n)/n;
-      nearest.b=(nearest.b*nearest.n+c.b*c.n)/n;
-      nearest.n=n;
+      return weights;
     }
-    kept=kept.sort((a,b)=>b.n-a.n);
-    const sum=kept.reduce((acc,c)=>acc+c.n,0);
-    return kept.map(c=>({color:toHex(c.r,c.g,c.b),value:c.n/sum}));
+    const initial=allocate(seeds);
+    // Exclude trace colors likely caused by raster outlines/compression artifacts.
+    const kept=seeds.filter((_,i)=>initial[i]/total>=.014);
+    if(!kept.length)kept.push(seeds[initial.indexOf(Math.max(...initial))]);
+    const finalWeights=allocate(kept);
+    return kept.map((seed,i)=>({
+      color:toHex(seed.r,seed.g,seed.b),
+      value:finalWeights[i]/total
+    })).sort((a,b)=>b.value-a.value);
   }
   async function getPalette(team){
+    const preferred=imageCandidates(team)[0];
     const cached=store.palettes[team.key];
-    if(Array.isArray(cached)&&cached.length&&cached.every(c=>c&&/^#[0-9a-fA-F]{6}$/.test(c.color)&&Number.isFinite(c.value))){
-      return {parts:cached,fallback:false};
+    if(cached && cached.version===PALETTE_VERSION && cached.source===preferred &&
+      Array.isArray(cached.parts) && cached.parts.length &&
+      cached.parts.every(c=>c&&/^#[0-9a-fA-F]{6}$/.test(c.color)&&Number.isFinite(c.value))){
+      return {parts:cached.parts,source:cached.source};
     }
-    try{
-      const img=await imageFor(team);
-      const parts=extractColors(img);
-      store.palettes[team.key]=parts;
-      save();
-      return {parts,fallback:false};
-    }catch(error){
-      console.warn("SportsPie: using fallback palette for",team.name,error);
-      return {parts:fallbackPalette(team),fallback:true};
-    }
+    // No guessed brand-color fallback: if the primary logo cannot be analyzed,
+    // the game displays a retry action instead of misleading percentages.
+    const img=await imageFor(team);
+    const parts=extractColors(img);
+    store.palettes[team.key]={version:PALETTE_VERSION,source:img.src,parts};
+    save();
+    return {parts,source:img.src};
+  }
+  function renderPaletteError(){
+    palette=null;paletteSource=null;
+    $("pie").classList.remove("ready");
+    $("pie").style.background="#2b3349";
+    const legend=$("paletteLegend");legend.replaceChildren();
+    const retry=document.createElement("button");
+    retry.type="button";retry.className="retry-palette";
+    retry.textContent="Retry loading logo colors ↻";
+    retry.addEventListener("click",()=>initGame(false));
+    legend.append(retry);
+    $("sourceNote").textContent="Couldn't analyze the primary logo. No estimated colors are shown.";
+    $("pie").setAttribute("aria-label","Logo colors unavailable. Retry loading.");
+    updateSubmit();
   }
   function integerPercentages(parts){
     const raw=parts.map(p=>p.value*100),ints=raw.map(Math.floor);
@@ -392,9 +410,7 @@
       wrap.append(swatch,count);$("paletteLegend").append(wrap);
     });
     $("pie").setAttribute("aria-label","Mystery logo color breakdown: "+palette.map((p,i)=>pct[i]+" percent "+p.color).join(", "));
-    $("sourceNote").textContent=paletteIsFallback
-      ? "Approximate colors · logo analysis temporarily unavailable."
-      : "Measured from the logo · transparent pixels excluded.";
+    $("sourceNote").textContent="Primary team logo · opaque pixels only · similar shades grouped.";
     updateSubmit();
   }
   function normalize(str){
@@ -650,12 +666,17 @@
         }
       }
       store.logos=logos;save();
-      // If the image CDN alias was unavailable at start, try again with the resolved URL.
-      if(paletteIsFallback&&current&&store.logos[current.key]){
+      // If the team API resolves a newer primary logo, use that exact image
+      // instead of a stale palette, even if an earlier CDN asset loaded.
+      if(current&&store.logos[current.key]&&paletteSource!==store.logos[current.key]){
         const serial=loadSerial;
         getPalette(current).then(result=>{
-          if(serial!==loadSerial||result.fallback)return;
-          palette=result.parts;paletteIsFallback=false;renderPie();
+          if(serial!==loadSerial)return;
+          palette=result.parts;paletteSource=result.source;renderPie();
+        }).catch(error=>{
+          if(serial!==loadSerial)return;
+          console.warn("Could not analyze resolved primary logo:",error);
+          if(!palette)renderPaletteError();
         });
       }
     }catch(e){ /* fallback asset list handles unavailable API */ }
