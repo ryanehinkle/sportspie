@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b1020">
-  <meta name="description" content="SportsPie — guess NFL, NHL, NBA, and MLB teams from the color proportions of their logos. One daily puzzle, unlimited practice.">
+  <meta name="description" content="SportsPie — guess NFL, NHL, NBA, MLB, and CFB teams from the color proportions of their logos. One daily puzzle, unlimited practice.">
   <title>SportsPie — Guess the team from its colors</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,6 +12,8 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%236f7cff'/%3E%3Cpath d='M32 32V4A28 28 0 0 1 59 38Z' fill='%23ffb45e'/%3E%3Cpath d='M32 32 59 38A28 28 0 0 1 14 54Z' fill='%23f5749a'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./styles.css">
   <script src="./palette.js" defer></script>
+  <script src="./cfb-teams.js" defer></script>
+  <script src="./logo-sources.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
@@ -49,6 +51,7 @@
         <button class="league" type="button" data-league="NHL" aria-pressed="false">NHL</button>
         <button class="league" type="button" data-league="NBA" aria-pressed="false">NBA</button>
         <button class="league" type="button" data-league="MLB" aria-pressed="false">MLB</button>
+        <button class="league" type="button" data-league="CFB" aria-pressed="false">CFB</button>
       </div>
     </section>
 
@@ -119,7 +122,7 @@
 
     <footer class="footer">
       <span>SportsPie <span class="footer-mark">✳</span> A little game for sports fans.</span>
-      <span>Unofficial fan project · NFL / NHL / NBA / MLB</span>
+      <span>Unofficial fan project · NFL / NHL / NBA / MLB / CFB</span>
     </footer>
   </main>
 
@@ -128,7 +131,7 @@
     <div class="modal-eyebrow">THE RULES</div><h2 id="howTitle">How to play</h2>
     <p>Every pie is created from the actual colors in a professional sports team's logo. The logo stays hidden until your game ends.</p>
     <div class="rule-item"><span class="rule-num">01</span><div><strong>Study the colors</strong><p>The size of each slice shows its share of the logo's visible pixels. Transparent background pixels don't count.</p></div></div>
-    <div class="rule-item"><span class="rule-num">02</span><div><strong>Name that team</strong><p>Search all teams, or filter to the NFL, NHL, NBA, or MLB. You have six guesses per puzzle.</p></div></div>
+    <div class="rule-item"><span class="rule-num">02</span><div><strong>Name that team</strong><p>Search all teams, or filter to the NFL, NHL, NBA, MLB, or CFB. You have six guesses per puzzle.</p></div></div>
     <div class="rule-item"><span class="rule-num">03</span><div><strong>Get closer</strong><p>Wrong guesses reveal new clues. Solve a daily puzzle or practice as much as you like in Unlimited.</p></div></div>
     <button class="modal-done" type="button" data-close>Let's play <span>→</span></button>
   </dialog>
