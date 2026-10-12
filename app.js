@@ -148,7 +148,7 @@
   const byKey = Object.fromEntries(teams.map(t => [t.key,t]));
   const STORE_KEY = "sportspie-state-v2";
   // Recompute saved palettes when the extraction method changes; preserve guesses and stats.
-  const PALETTE_VERSION = 3;
+  const PALETTE_VERSION = 4;
   let store;
   try {store=JSON.parse(localStorage.getItem(STORE_KEY)) || {};} catch(e) {store={};}
   if(!store.records || typeof store.records!=="object") store.records={};
@@ -285,75 +285,10 @@
     return Math.sqrt(dr*dr*.95+dg*dg*1.25+db*db*.8);
   }
   function extractColors(img){
-    // Work directly from the PRIMARY logo's opaque pixels. Nearest-neighbor
-    // downsampling avoids inventing extra intermediate colors via canvas smoothing.
-    const size=240;
-    const canvas=document.createElement("canvas");
-    canvas.width=size;canvas.height=size;
-    const ctx=canvas.getContext("2d",{willReadFrequently:true});
-    if(!ctx)throw new Error("Canvas unavailable");
-    const w=img.naturalWidth,h=img.naturalHeight;
-    if(!w||!h)throw new Error("Empty logo image");
-    const scale=Math.min((size-8)/w,(size-8)/h);
-    const dw=w*scale,dh=h*scale;
-    ctx.clearRect(0,0,size,size);
-    ctx.imageSmoothingEnabled=false;
-    ctx.drawImage(img,(size-dw)/2,(size-dh)/2,dw,dh);
-    const rgba=ctx.getImageData(0,0,size,size).data;
-    const bins=new Map();
-    let total=0;
-    for(let i=0;i<rgba.length;i+=4){
-      if(rgba[i+3]<245)continue; // omit transparent and semi-transparent edge pixels
-      const r=rgba[i],g=rgba[i+1],b=rgba[i+2];
-      const qr=Math.min(255,Math.round(r/16)*16);
-      const qg=Math.min(255,Math.round(g/16)*16);
-      const qb=Math.min(255,Math.round(b/16)*16);
-      const id=(qr<<16)|(qg<<8)|qb;
-      const item=bins.get(id)||{r:0,g:0,b:0,n:0};
-      item.r+=r;item.g+=g;item.b+=b;item.n++;
-      bins.set(id,item);total++;
+    if(!window.SportsPiePalette){
+      throw new Error("Logo palette analyzer was not loaded");
     }
-    if(total<60)throw new Error("Logo has too few opaque pixels for analysis");
-    const entries=[...bins.values()]
-      .map(c=>({r:c.r/c.n,g:c.g/c.n,b:c.b/c.n,n:c.n}))
-      .sort((a,b)=>b.n-a.n);
-    // Only genuinely prevalent, distinct colors can become pie slices.
-    // Close shades (including anti-aliased blacks/greys/whites) share one slice.
-    const seeds=[];
-    const minimumSeedPixels=Math.max(5,Math.ceil(total*.006));
-    for(const entry of entries){
-      if(entry.n<minimumSeedPixels)break;
-      if(!seeds.some(seed=>colorDistance(seed,entry)<60)){
-        seeds.push({r:entry.r,g:entry.g,b:entry.b});
-      }
-      if(seeds.length>=10)break;
-    }
-    if(!seeds.length){
-      const top=entries[0];seeds.push({r:top.r,g:top.g,b:top.b});
-    }
-    function allocate(selected){
-      const weights=new Array(selected.length).fill(0);
-      // Count EVERY opaque source pixel; edge shades belong to their nearest
-      // dominant logo color instead of generating additional pie wedges.
-      for(const entry of entries){
-        let nearest=0,best=Infinity;
-        for(let j=0;j<selected.length;j++){
-          const distance=colorDistance(entry,selected[j]);
-          if(distance<best){best=distance;nearest=j;}
-        }
-        weights[nearest]+=entry.n;
-      }
-      return weights;
-    }
-    const initial=allocate(seeds);
-    // Exclude trace colors likely caused by raster outlines/compression artifacts.
-    const kept=seeds.filter((_,i)=>initial[i]/total>=.014);
-    if(!kept.length)kept.push(seeds[initial.indexOf(Math.max(...initial))]);
-    const finalWeights=allocate(kept);
-    return kept.map((seed,i)=>({
-      color:toHex(seed.r,seed.g,seed.b),
-      value:finalWeights[i]/total
-    })).sort((a,b)=>b.value-a.value);
+    return window.SportsPiePalette.extractFromImage(img);
   }
   async function getPalette(team){
     const preferred=imageCandidates(team)[0];
