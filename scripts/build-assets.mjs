@@ -34,6 +34,7 @@ const aliases={
   "Ole Miss":["Ole Miss","Mississippi"],
   "Pittsburgh":["Pittsburgh","Pitt"],
   "Sam Houston":["Sam Houston","Sam Houston State"],
+  "San Jose State":["San Jos� State","San Jose State","San Jose St."],
   "SMU":["SMU","Southern Methodist"],
   "Southern Miss":["Southern Miss","Southern Mississippi"],
   "Texas A&M":["Texas A&M"],
