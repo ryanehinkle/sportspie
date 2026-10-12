@@ -300,7 +300,7 @@
     return window.SportsPiePalette.extractFromImage(img);
   }
   async function getPalette(team){
-    const preferred=imageCandidates(team)[0];
+    const preferred=new URL(imageCandidates(team)[0],document.baseURI).href;
     const cached=store.palettes[team.key];
     if(cached && cached.version===PALETTE_VERSION && cached.source===preferred &&
       Array.isArray(cached.parts) && cached.parts.length &&
