@@ -82,3 +82,44 @@ test("a legitimate solid neutral logo is not blindly erased",()=>{
   assert.equal(out.length,1);
   near(out[0].value,1,.000001);
 });
+
+
+test("Red Wings style red and white image has TWO colors despite multiple pink edge shades",()=>{
+  const w=160,h=110,d=canvas(w,h,[0,0,0,0]);
+  // Large red field with solid white interior and an antialiased boundary.
+  for(let y=10;y<100;y++)for(let x=10;x<150;x++)paint(d,w,x,y,233,7,43);
+  for(let y=17;y<93;y++)for(let x=93;x<146;x++)paint(d,w,x,y,255,255,255);
+  // Render an 8px gradient with distinct pinks, just as raster logos do.
+  for(let y=17;y<93;y++)for(let t=0;t<8;t++){
+    const f=(t+1)/9;
+    paint(d,w,85+t,y,Math.round(233+22*f),Math.round(7+248*f),Math.round(43+212*f));
+  }
+  const out=extractFromPixels(d,w,h);
+  assert.equal(out.length,2,"red/white artwork must not invent pink wedges: "+JSON.stringify(out));
+  const red=out.find(p=>p.color==="#E9072B"),white=out.find(p=>p.color==="#FFFFFF");
+  assert.ok(red&&white,JSON.stringify(out));
+  near(out.reduce((sum,p)=>sum+p.value,0),1,.000001);
+});
+
+test("Red Wings style flattened light-gray image excludes matte AND pink raster edges",()=>{
+  const w=120,h=120,d=canvas(w,h,[230,230,230,255]);
+  for(let y=20;y<100;y++)for(let x=15;x<105;x++)paint(d,w,x,y,233,7,43);
+  for(let y=33;y<87;y++)for(let x=65;x<100;x++)paint(d,w,x,y,255,255,255);
+  for(let y=33;y<87;y++)for(let t=0;t<7;t++){
+    const blend=(t+1)/8;
+    paint(d,w,58+t,y,Math.round(233+22*blend),Math.round(7+248*blend),Math.round(43+212*blend));
+  }
+  const out=extractFromPixels(d,w,h);
+  assert.equal(out.length,2,JSON.stringify(out));
+  near(out.reduce((sum,p)=>sum+p.value,0),1,.000001);
+});
+
+test("large distinct orange and red fills remain different colors",()=>{
+  const w=100,h=100,d=canvas(w,h);
+  for(let y=10;y<90;y++)for(let x=10;x<50;x++)paint(d,w,x,y,220,20,40);
+  for(let y=10;y<90;y++)for(let x=50;x<90;x++)paint(d,w,x,y,253,120,25);
+  const out=extractFromPixels(d,w,h);
+  assert.equal(out.length,2,JSON.stringify(out));
+  near(out[0].value,.5,.001);
+  near(out[1].value,.5,.001);
+});
