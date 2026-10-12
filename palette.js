@@ -6,8 +6,7 @@
 (function(root){
   "use strict";
 
-  const MAX_COLORS = 12;
-  const COLOR_MERGE_DISTANCE = 62;
+  const MAX_COLORS = 10;
 
   function difference(a,b) {
     const dr=a.r-b.r,dg=a.g-b.g,db=a.b-b.b;
@@ -69,6 +68,35 @@
     return visited;
   }
 
+  function appearance(rgb){
+    const {r,g,b}=rgb;
+    const max=Math.max(r,g,b),min=Math.min(r,g,b),chroma=max-min;
+    let hue=0;
+    if(chroma){
+      if(max===r)hue=((g-b)/chroma)%6;
+      else if(max===g)hue=(b-r)/chroma+2;
+      else hue=(r-g)/chroma+4;
+      hue=(hue*60+360)%360;
+    }
+    return {hue,chroma,saturation:max?chroma/max:0,brightness:max,
+      neutral:chroma<24||chroma/Math.max(1,max)<.105};
+  }
+  function hueDistance(a,b){
+    const delta=Math.abs(a-b);
+    return Math.min(delta,360-delta);
+  }
+  function sameFill(a,b,total){
+    if(difference(a,b)<45)return true;
+    const x=appearance(a),y=appearance(b);
+    if(x.neutral||y.neutral)return false;
+    const angle=hueDistance(x.hue,y.hue);
+    if(angle>15)return false;
+    // A small tint of a major fill is not another team color. Two large,
+    // intentionally different blocks of the same hue can remain separate.
+    const bothStrong=(a.support||0)/total>.025&&(b.support||0)/total>.025;
+    const brightnessGap=Math.abs(x.brightness-y.brightness);
+    return !(bothStrong&&brightnessGap>=65);
+  }
   function extractFromPixels(data,width,height){
     if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||
        !data||data.length!==width*height*4){
@@ -76,56 +104,102 @@
     }
     const cutout=matteMask(data,width,height);
     const histogram=new Map();
+    const flatHistogram=new Map();
     let total=0;
+    const record=(map,key,r,g,b,weight)=>{
+      const entry=map.get(key)||{r:0,g:0,b:0,n:0};
+      entry.r+=r*weight;entry.g+=g*weight;entry.b+=b*weight;entry.n+=weight;
+      map.set(key,entry);
+    };
     for(let i=0;i<width*height;i++){
       if(cutout&&cutout[i])continue;
       const j=i*4;
       const alpha=data[j+3];
       if(alpha<8)continue;
-      const weight=alpha/255; // physical visible pixel area; translucent rims count fractionally
+      const weight=alpha/255;
       const r=data[j],g=data[j+1],b=data[j+2];
       const qr=Math.min(255,Math.round(r/12)*12);
       const qg=Math.min(255,Math.round(g/12)*12);
       const qb=Math.min(255,Math.round(b/12)*12);
       const key=(qr<<16)|(qg<<8)|qb;
-      const entry=histogram.get(key)||{r:0,g:0,b:0,n:0};
-      entry.r+=r*weight;
-      entry.g+=g*weight;
-      entry.b+=b*weight;
-      entry.n+=weight;
-      histogram.set(key,entry);
+      record(histogram,key,r,g,b,weight);
       total+=weight;
+      // Recognize real, solid fills from their spatially uniform interiors.
+      // An antialiased pink border beside a red/white logo is not an interior
+      // fill and must not become another pie slice, regardless of pixel count.
+      const x=i%width,y=(i/width)|0;
+      if(alpha<245||x===0||y===0||x===width-1||y===height-1)continue;
+      let matching=0;
+      for(let dy=-1;dy<=1;dy++){
+        for(let dx=-1;dx<=1;dx++){
+          if(dx===0&&dy===0)continue;
+          const ni=i+dy*width+dx, k=ni*4;
+          if((cutout&&cutout[ni])||data[k+3]<245)continue;
+          if(Math.abs(r-data[k])<=7&&Math.abs(g-data[k+1])<=7&&
+             Math.abs(b-data[k+2])<=7)matching++;
+        }
+      }
+      if(matching>=6)record(flatHistogram,key,r,g,b,1);
     }
     if(total<12)throw new Error("Logo contains too few visible pixels");
-    const colors=[...histogram.values()]
-      .map(e=>({r:e.r/e.n,g:e.g/e.n,b:e.b/e.n,n:e.n}))
-      .sort((a,b)=>b.n-a.n);
+
+    const toEntries=map=>[...map.values()].map(e=>({
+      r:e.r/e.n,g:e.g/e.n,b:e.b/e.n,n:e.n,support:e.n
+    })).sort((a,b)=>b.n-a.n);
+    const interiors=toEntries(flatHistogram);
+    const all=toEntries(histogram);
     const seeds=[];
-    const minPeak=Math.max(1,total*.003);
-    for(const color of colors){
-      if(color.n<minPeak)break;
-      if(!seeds.some(seed=>difference(color,seed)<COLOR_MERGE_DISTANCE)){
-        seeds.push({r:color.r,g:color.g,b:color.b});
+    // Core regions are the source of meaningful colors. Keep tiny but
+    // genuinely flat accent fills; suppress colors existing only on edges.
+    for(const entry of interiors){
+      if(entry.n<Math.max(3,total*.0008))break;
+      if(!seeds.some(seed=>sameFill(seed,entry,total))){
+        seeds.push({...entry});
       }
       if(seeds.length>=MAX_COLORS)break;
     }
-    if(!seeds.length)seeds.push({...colors[0]});
-    function assign(centers){
-      const weights=new Array(centers.length).fill(0);
-      for(const entry of colors){
-        let closest=0,minimum=Infinity;
-        for(let j=0;j<centers.length;j++){
-          const distance=difference(entry,centers[j]);
-          if(distance<minimum){minimum=distance;closest=j;}
+    // Some logos use gradients or hairline marks with no broad flat interior.
+    // Consider their high-frequency colors only when they don't belong to an
+    // already discovered color family (e.g. pale red still belongs to red).
+    for(const entry of all){
+      if(entry.n<Math.max(8,total*.007))break;
+      if(!seeds.some(seed=>sameFill(seed,entry,total))){
+        seeds.push({...entry,support:0});
+      }
+      if(seeds.length>=MAX_COLORS)break;
+    }
+    if(!seeds.length)seeds.push({...all[0]});
+
+    function nearestSeed(color,centers){
+      const pixelKind=appearance(color);
+      let selected=0,best=Infinity;
+      for(let j=0;j<centers.length;j++){
+        const seed=centers[j],seedKind=appearance(seed);
+        let score=difference(color,seed);
+        // An antialiased pink/red edge must be assigned to the actual red
+        // fill, even if its pale RGB happens to be closer to white.
+        if(!pixelKind.neutral&&!seedKind.neutral){
+          const hueGap=hueDistance(pixelKind.hue,seedKind.hue);
+          if(hueGap<=19)score*=.19;
+          else if(hueGap<=30)score*=.45;
         }
-        weights[closest]+=entry.n;
+        if(!pixelKind.neutral&&seedKind.neutral&&
+           pixelKind.chroma>=24)score+=90;
+        if(score<best){best=score;selected=j;}
+      }
+      return selected;
+    }
+    function allocate(centers){
+      const weights=new Array(centers.length).fill(0);
+      for(const entry of all){
+        weights[nearestSeed(entry,centers)]+=entry.n;
       }
       return weights;
     }
-    const firstWeights=assign(seeds);
-    const significant=seeds.filter((seed,i)=>firstWeights[i]/total>=.005);
-    if(!significant.length)significant.push(seeds[firstWeights.indexOf(Math.max(...firstWeights))]);
-    const counts=assign(significant);
+    const trial=allocate(seeds);
+    const significant=seeds.filter((_,i)=>trial[i]/total>=.003);
+    if(!significant.length)significant.push(seeds[trial.indexOf(Math.max(...trial))]);
+    const counts=allocate(significant);
     function hex(n){return Math.max(0,Math.min(255,Math.round(n))).toString(16).padStart(2,"0").toUpperCase();}
     return significant.map((c,i)=>({
       color:"#"+hex(c.r)+hex(c.g)+hex(c.b),
