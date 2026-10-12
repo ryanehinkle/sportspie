@@ -45,7 +45,7 @@ const aliases={
   "UCLA":["UCLA"],
   "USC":["USC","Southern California"],
   "UAB":["UAB","Alabama-Birmingham"],
-  "UTSA":["UTSA","Texas-San Antonio"],
+  "UTSA":["UT San Antonio","UTSA","Texas-San Antonio"],
   "UTEP":["UTEP","Texas-El Paso"],
   "Western Kentucky":["Western Kentucky"]
 };
