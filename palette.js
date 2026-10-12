@@ -34,7 +34,10 @@
     // Only treat a *neutral* edge as a possible flattened background.
     const rgb=background.slice(0,3);
     const neutral=Math.max(...rgb)-Math.min(...rgb)<=12;
-    if(!neutral)return null;
+    // Only infer light neutral mattes (white/gray export backgrounds).
+    // Black is often part of the mark itself and must never be discarded.
+    const light=(rgb[0]+rgb[1]+rgb[2])/3>=180;
+    if(!neutral||!light)return null;
 
     const visited=new Uint8Array(pixels);
     const queue=new Uint32Array(pixels);
