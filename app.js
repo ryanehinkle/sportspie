@@ -148,7 +148,7 @@
   const byKey = Object.fromEntries(teams.map(t => [t.key,t]));
   const STORE_KEY = "sportspie-state-v2";
   // Recompute saved palettes when the extraction method changes; preserve guesses and stats.
-  const PALETTE_VERSION = 4;
+  const PALETTE_VERSION = 5;
   let store;
   try {store=JSON.parse(localStorage.getItem(STORE_KEY)) || {};} catch(e) {store={};}
   if(!store.records || typeof store.records!=="object") store.records={};
