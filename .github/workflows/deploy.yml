@@ -29,6 +29,10 @@ jobs:
           node --check palette.js
       - name: Verify logo-pixel calculations
         run: node --test tests/palette.test.cjs
+      - name: Build and verify all team logos
+        run: node scripts/build-assets.mjs
+      - name: Verify compiled FBS catalog
+        run: node tests/team-catalog.test.cjs
       - name: Configure and enable GitHub Pages
         uses: actions/configure-pages@v5
         with:
