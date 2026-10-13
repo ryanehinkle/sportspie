@@ -544,6 +544,14 @@
   }
   function clueTexts(){
     const nicknameLetters=current.nickname.replace(/[^A-Za-z0-9]/g,"").length;
+    if(current.league==="CFB"){
+      return [
+        "School name begins with: "+(current.city ? current.city[0].toUpperCase() : "Unknown"),
+        "Nickname length: "+nicknameLetters+" letters / digits",
+        "Nickname begins with: "+current.nickname[0].toUpperCase(),
+        "Nickname: "+current.nickname
+      ];
+    }
     return [
       "League: "+current.league,
       "City / region begins with: "+(current.city ? current.city[0].toUpperCase() : "No city in the team name"),
@@ -553,12 +561,13 @@
     ];
   }
   function renderHints(){
-    const used=HINTS.count(session);
+    const maximum=HINTS.maxForLeague(current.league);
+    const used=HINTS.count(session,maximum);
     const clues=clueTexts().slice(0,used);
-    $("hintCounter").textContent=used+"/"+HINTS.MAX_HINTS;
-    $("hintBtn").disabled=!!session.complete||used>=HINTS.MAX_HINTS;
-    $("hintBtn").title=used>=HINTS.MAX_HINTS?"All hints revealed":
-      "Reveal hint "+(used+1)+" of "+HINTS.MAX_HINTS;
+    $("hintCounter").textContent=used+"/"+maximum;
+    $("hintBtn").disabled=!!session.complete||used>=maximum;
+    $("hintBtn").title=used>=maximum?"All hints revealed":
+      "Reveal hint "+(used+1)+" of "+maximum;
     $("hintBox").hidden=!used||!!session.complete;
     $("hintList").replaceChildren();
     clues.forEach((clue,index)=>{
@@ -568,10 +577,11 @@
     });
   }
   function revealHint(){
-    if(!HINTS.reveal(session,store,hintScope()))return;
+    const maximum=HINTS.maxForLeague(current.league);
+    if(!HINTS.reveal(session,store,hintScope(),maximum))return;
     save();
     renderHints();
-    $("feedback").textContent="Hint "+HINTS.count(session)+" revealed.";
+    $("feedback").textContent="Hint "+HINTS.count(session,maximum)+" revealed.";
   }
   function recordCompletion(won){
     HINTS.complete(session,store,hintScope());
