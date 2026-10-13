@@ -51,3 +51,16 @@ test("two daily categories, an SVG pie and no expired footer copy",()=>{
   assert.match(html,/id="pieSvg"/);
   assert.doesNotMatch(html,/id="sourceNote"|class="footer"/);
 });
+
+
+test("launch-day overrides select the Texans and Auburn Tigers without changing Day 2 rotation",()=>{
+  const app=fs.readFileSync("app.js","utf8");
+  const dailyBlock=app.slice(app.indexOf("function dailyAnswer()"),app.indexOf("function newEndless()"));
+  assert.match(dailyBlock,/if\(day==="2026-10-13"\)/);
+  assert.match(dailyBlock,/byKey\["NFL:hou"\]/);
+  assert.match(dailyBlock,/t\.league==="CFB"&&t\.city==="Auburn"&&t\.nickname==="Tigers"/);
+  assert.match(dailyBlock,/hash\("SportsPie:daily-v3:"\+dailyCategory\)/);
+  assert.match(app,/refreshOpeningDayAttempts\(\);\s*initGame\(false\)/);
+  assert.match(app,/store\.openingDayCorrected=true/);
+  assert.match(app,/delete store\.records\[key\]/);
+});
