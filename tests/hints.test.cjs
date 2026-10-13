@@ -76,3 +76,47 @@ test("stats and buttons are present and existing gameplay rules are unchanged",(
   assert.match(app,/const MAX_GUESSES=6/);
   assert.match(app,/HINTS\.complete\(session,store,hintScope\(\)\)/);
 });
+
+
+test("CFB hints stop at four while professional teams retain five",()=>{
+  assert.equal(hints.maxForLeague("CFB"),4);
+  for(const league of ["NFL","NBA","NHL","MLB"]){
+    assert.equal(hints.maxForLeague(league),5);
+  }
+  const store={};
+  const college={hintsUsed:0,complete:false,optionalHintsEnabled:true};
+  for(let i=0;i<4;i++)assert.equal(hints.reveal(college,store,"CFB",hints.maxForLeague("CFB")),true);
+  assert.equal(hints.reveal(college,store,"CFB",hints.maxForLeague("CFB")),false);
+  assert.equal(hints.count(college,hints.maxForLeague("CFB")),4);
+  assert.equal(hints.stats(store,"CFB").totalUsed,4);
+  const pro={hintsUsed:0,complete:false,optionalHintsEnabled:true};
+  for(let i=0;i<5;i++)assert.equal(hints.reveal(pro,store,"PRO",hints.maxForLeague("NFL")),true);
+  assert.equal(hints.count(pro,hints.maxForLeague("NFL")),5);
+  assert.equal(hints.stats(store,"PRO").totalUsed,5);
+});
+
+test("CFB hints skip league, use school naming, and reveal mascot instead of location",()=>{
+  const app=fs.readFileSync("app.js","utf8");
+  const start=app.indexOf('function clueTexts(){');
+  const end=app.indexOf('function renderHints(){',start);
+  assert.ok(start!==-1&&end>start);
+  const block=app.slice(start,end);
+  const college=block.slice(block.indexOf('if(current.league==="CFB")'),block.indexOf('return [',block.indexOf('if(current.league==="CFB")')+40));
+  assert.match(block,/if\(current\.league==="CFB"\)/);
+  assert.match(block,/School name begins with:/);
+  assert.match(block,/Nickname length:/);
+  assert.match(block,/Nickname begins with:/);
+  assert.match(block,/"Nickname: "\+current\.nickname/);
+  const cfbPart=block.slice(block.indexOf('if(current.league==="CFB")'),block.indexOf('    return [',block.indexOf('if(current.league==="CFB")')+60));
+  assert.doesNotMatch(cfbPart,/League:|Home city \/ region/);
+  assert.match(app,/HINTS\.count\(session,maximum\)/);
+  assert.match(app,/HINTS\.reveal\(session,store,hintScope\(\),maximum\)/);
+});
+
+test("existing older five-hint CFB records remain readable but only display four",()=>{
+  const older={hintsUsed:5,complete:false,optionalHintsEnabled:true};
+  assert.equal(hints.count(older),5);
+  assert.equal(hints.count(older,hints.maxForLeague("CFB")),4);
+  const store={};
+  assert.equal(hints.reveal(older,store,"CFB",4),false);
+});
