@@ -155,7 +155,8 @@
   if(!store.stats || typeof store.stats!=="object") store.stats={};
   if(!Array.isArray(store.recent)) store.recent=[];
   const DAILY = window.SportsPieDaily;
-  if(!DAILY)throw new Error("The SportsPie local daily clock was not loaded");
+  const HINTS = window.SportsPieHints;
+  if(!DAILY||!HINTS)throw new Error("The SportsPie game helpers were not loaded");
   let league = ["ALL","NFL","NHL","NBA","MLB","CFB"].includes(store.league)?store.league:"ALL";
   let dailyCategory = ["PRO","CFB"].includes(store.dailyCategory)?store.dailyCategory:(league==="CFB"?"CFB":"PRO");
   let mode = ["daily","endless"].includes(store.mode)?store.mode:"daily";
@@ -191,7 +192,7 @@
     if(!available.length) available=choices;
     const t=available[Math.floor(Math.random()*available.length)];
     store.recent=(store.recent||[]).concat(t.key).slice(-Math.min(20,teams.length-1));
-    store.endlessSession={league,key:t.key,guesses:[],complete:false,won:false};
+    store.endlessSession={league,key:t.key,guesses:[],complete:false,won:false,hintsUsed:0,optionalHintsEnabled:true};
     save();return t;
   }
   function initGame(forceNew){
@@ -210,6 +211,13 @@
         current=newEndless();
         session=store.endlessSession;
       }
+    }
+    // Preserve all in-progress guesses/hints when switching modes or refreshing.
+    // Already completed older games predate manual hints, so don't classify
+    // their previously automatic clues as manually requested.
+    if(!session.complete){
+      session.optionalHintsEnabled=true;
+      session.hintsUsed=HINTS.count(session);
     }
     selected=null; options=[];optionIndex=-1;palette=null;paletteSource=null;
     $("teamInput").value=""; $("teamInput").disabled=false;
@@ -481,46 +489,63 @@
       row.append(img,info,mark);target.append(row);
     });
   }
+  function hintScope(){
+    return mode==="daily"?dailyCategory:"UNLIMITED:"+league;
+  }
   function clueTexts(){
-    const count=session.guesses.filter(k=>k!==current.key).length;
     const nicknameLetters=current.nickname.replace(/[^A-Za-z0-9]/g,"").length;
-    const clues=[
+    return [
       "League: "+current.league,
       "City / region begins with: "+(current.city ? current.city[0].toUpperCase() : "No city in the team name"),
       "Nickname length: "+nicknameLetters+" letters / digits",
       "Nickname begins with: "+current.nickname[0].toUpperCase(),
       "Home city / region: "+(current.city||"Not included in official name")
     ];
-    return clues.slice(0,Math.min(count,5));
   }
   function renderHints(){
-    const clues=clueTexts();
-    $("hintBox").hidden=!clues.length||!!session.complete;
+    const used=HINTS.count(session);
+    const clues=clueTexts().slice(0,used);
+    $("hintCounter").textContent=used+"/"+HINTS.MAX_HINTS;
+    $("hintBtn").disabled=!!session.complete||used>=HINTS.MAX_HINTS;
+    $("hintBtn").title=used>=HINTS.MAX_HINTS?"All hints revealed":
+      "Reveal hint "+(used+1)+" of "+HINTS.MAX_HINTS;
+    $("hintBox").hidden=!used||!!session.complete;
     $("hintList").replaceChildren();
-    clues.forEach(clue=>{
-      const div=document.createElement("div");div.className="hint-item";div.textContent=clue;
+    clues.forEach((clue,index)=>{
+      const div=document.createElement("div");div.className="hint-item";
+      div.textContent=(index+1)+". "+clue;
       $("hintList").append(div);
     });
   }
+  function revealHint(){
+    if(!HINTS.reveal(session,store,hintScope()))return;
+    save();
+    renderHints();
+    $("feedback").textContent="Hint "+HINTS.count(session)+" revealed.";
+  }
   function recordCompletion(won){
-    if(mode!=="daily")return;
-    const key=dailyKey();
-    if(store.records[key]&&store.records[key].counted)return;
+    HINTS.complete(session,store,hintScope());
+    if(session.counted)return;
     session.counted=true;
-    const old=store.stats[dailyCategory]||{played:0,wins:0,streak:0,best:0,lastWon:"",distribution:[0,0,0,0,0,0]};
+    const scope=hintScope();
+    const old=store.stats[scope]||{played:0,wins:0,streak:0,best:0,lastWon:"",distribution:[0,0,0,0,0,0]};
     old.played++;
     if(won){
       old.wins++;
-      const prev=new Date(day+"T00:00:00Z");prev.setUTCDate(prev.getUTCDate()-1);
-      const yesterday=prev.toISOString().slice(0,10);
-      old.streak=old.lastWon===yesterday?old.streak+1:(old.lastWon===day?old.streak:1);
+      if(mode==="daily"){
+        const prev=new Date(day+"T00:00:00Z");prev.setUTCDate(prev.getUTCDate()-1);
+        const yesterday=prev.toISOString().slice(0,10);
+        old.streak=old.lastWon===yesterday?old.streak+1:(old.lastWon===day?old.streak:1);
+        old.lastWon=day;
+      }else{
+        old.streak=(old.streak||0)+1;
+      }
       old.best=Math.max(old.best,old.streak);
-      old.lastWon=day;
       const n=session.guesses.length;old.distribution[n-1]=(old.distribution[n-1]||0)+1;
     }else{
       old.streak=0;
     }
-    store.stats[dailyCategory]=old;
+    store.stats[scope]=old;
   }
   function submitGuess(){
     if(!palette||session.complete)return;
@@ -536,7 +561,7 @@
     session.complete=won||session.guesses.length>=MAX_GUESSES;
     if(session.complete)recordCompletion(won);
     save();
-    $("feedback").textContent=won?"Correct!":session.complete?"Game over!":"Not quite. A new clue has unlocked.";
+    $("feedback").textContent=won?"Correct!":session.complete?"Game over!":"Not quite. Try another team or use a hint.";
     selected=null;$("teamInput").value="";closeSuggestions();
     renderGuesses();renderAttempts();renderHints();updateSubmit();
     if(session.complete){
@@ -553,9 +578,11 @@
     $("resultIcon").textContent=won?"✓":"×";
     $("resultKicker").textContent=won?"WELL PLAYED":"ROUND COMPLETE";
     $("resultHeading").textContent=won?"You got it!":"Out of guesses.";
+    const hintResult=session.optionalHintsEnabled?
+      " · "+HINTS.count(session)+" "+(HINTS.count(session)===1?"hint":"hints")+" used":"";
     $("resultSub").textContent=won
-      ? "Solved in "+session.guesses.length+" "+(session.guesses.length===1?"guess":"guesses")+". Nice eye for color."
-      : "The mystery logo has been revealed.";
+      ? "Solved in "+session.guesses.length+" "+(session.guesses.length===1?"guess":"guesses")+hintResult+"."
+      : "The mystery logo has been revealed"+hintResult+".";
     $("answerName").textContent=current.name;
     $("answerLeague").textContent=current.league+" · Official team logo";
     applyTeamLogo($("answerLogo"),current);
@@ -568,7 +595,8 @@
     const header="SportsPie 🥧 · "+(mode==="daily"?"#"+DAILY.puzzleNumber(day)+" · "+day+" · ":"")+(mode==="daily"?dailyCategory:league)+" · "+score;
     const blocks=session.guesses.map(k=>k===current.key?"🟩":"🟪").join("");
     const url="https://ryanehinkle.github.io/sportspie/";
-    const message=header+"\n"+blocks+"\n"+url;
+    const hintInfo=session.optionalHintsEnabled?"\n✦ "+HINTS.count(session)+" hints used":"";
+    const message=header+"\n"+blocks+hintInfo+"\n"+url;
     if(navigator.clipboard&&navigator.clipboard.writeText){
       navigator.clipboard.writeText(message).then(()=>showToast("Result copied to clipboard!"))
         .catch(()=>manualCopy(message));
@@ -585,8 +613,17 @@
     toastTimer=setTimeout(()=>$("toast").classList.remove("show"),2700);
   }
   function showStats(){
-    const stats=store.stats[dailyCategory]||{played:0,wins:0,streak:0,best:0,distribution:[0,0,0,0,0,0]};
-    $("statsScope").textContent="DAILY · "+(dailyCategory==="PRO"?"NFL / NHL / NBA / MLB":"CFB");
+    const scope=hintScope();
+    const stats=store.stats[scope]||{played:0,wins:0,streak:0,best:0,distribution:[0,0,0,0,0,0]};
+    const hintData=HINTS.stats(store,scope);
+    $("statsScope").textContent=mode==="daily"
+      ? "DAILY · "+(dailyCategory==="PRO"?"NFL / NHL / NBA / MLB":"CFB")
+      : "UNLIMITED · "+(league==="ALL"?"ALL LEAGUES":league);
+    $("statHintsUsed").textContent=hintData.totalUsed;
+    $("statHintFreeWins").textContent=hintData.hintFreeWins;
+    $("statAvgHints").textContent=hintData.completedRounds?
+      (hintData.completedHints/hintData.completedRounds).toFixed(1):"0.0";
+    $("statHelpedRounds").textContent=hintData.helpedRounds;
     $("statPlayed").textContent=stats.played;
     $("statWin").textContent=stats.played?Math.round(100*stats.wins/stats.played)+"%":"0%";
     // A winning streak expires if there wasn't a win today or yesterday.
@@ -659,6 +696,7 @@
     if(!event.target.closest(".autocomplete"))closeSuggestions();
   });
   $("guessBtn").addEventListener("click",submitGuess);
+  $("hintBtn").addEventListener("click",revealHint);
   $("howBtn").addEventListener("click",()=>$("howDialog").showModal());
   $("statsBtn").addEventListener("click",showStats);
   document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>b.closest("dialog").close()));
