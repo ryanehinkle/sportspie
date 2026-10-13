@@ -2,9 +2,12 @@
 (function(root){
   "use strict";
   const MAX_HINTS=5;
-  function count(session){
+  function maxForLeague(league){
+    return league==="CFB"?4:MAX_HINTS;
+  }
+  function count(session,limit=MAX_HINTS){
     const n=Number(session?.hintsUsed);
-    return Number.isInteger(n)?Math.max(0,Math.min(MAX_HINTS,n)):0;
+    return Number.isInteger(n)?Math.max(0,Math.min(MAX_HINTS,Math.max(0,Math.min(MAX_HINTS,limit)),n)):0;
   }
   function stats(store,scope){
     if(!store.hintStats||typeof store.hintStats!=="object")store.hintStats={};
@@ -18,8 +21,8 @@
     }
     return result;
   }
-  function reveal(session,store,scope){
-    if(!session||session.complete||count(session)>=MAX_HINTS)return false;
+  function reveal(session,store,scope,limit=MAX_HINTS){
+    if(!session||session.complete||count(session)>=limit)return false;
     const previous=count(session);
     session.hintsUsed=previous+1;
     const aggregate=stats(store,scope);
@@ -42,7 +45,7 @@
     session.hintResultCounted=true;
     return true;
   }
-  const api={MAX_HINTS,count,stats,reveal,complete};
+  const api={MAX_HINTS,maxForLeague,count,stats,reveal,complete};
   if(typeof module!=="undefined"&&module.exports)module.exports=api;
   if(root)root.SportsPieHints=api;
 })(typeof window!=="undefined"?window:null);
