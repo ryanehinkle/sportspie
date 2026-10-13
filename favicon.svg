@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>SportsPie</title>
+  <circle cx="32" cy="32" r="29.5" fill="#151b2c"/>
+  <path d="M32 32 L32 3 A29 29 0 0 1 57.4 46 Z" fill="#f9a76f"/>
+  <path d="M32 32 L57.4 46 A29 29 0 0 1 21.3 58.96 Z" fill="#9d96fe"/>
+  <path d="M32 32 L21.3 58.96 A29 29 0 0 1 32 3 Z" fill="#73ddca"/>
+  <path d="M32 32 L32 3 M32 32 L57.4 46 M32 32 L21.3 58.96" stroke="#222b3d" stroke-width="2.7" stroke-linecap="round" fill="none"/>
+  <circle cx="32" cy="32" r="29" stroke="#28334a" stroke-width="1.6" fill="none"/>
+</svg>
