@@ -28,8 +28,9 @@ jobs:
           node --check app.js
           node --check palette.js
           node --check daily.js
+          node --check hints.js
       - name: Verify logo-pixel calculations
-        run: node --test tests/palette.test.cjs tests/daily.test.cjs
+        run: node --test tests/palette.test.cjs tests/daily.test.cjs tests/hints.test.cjs
       - name: Build and verify all team logos
         run: node scripts/build-assets.mjs
       - name: Verify compiled FBS catalog
