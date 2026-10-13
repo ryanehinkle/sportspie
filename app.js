@@ -179,11 +179,61 @@
   }
   function dailyKey(){return "local-v1|"+day+"|"+dailyCategory;}
   function dailyAnswer(){
+    // Opening-day featured teams (October 13, 2026) only.
+    // These are resolved against the verified primary-logo roster, so both
+    // the displayed answer and the analyzed pie use the same logo asset.
+    if(day==="2026-10-13"){
+      const target=dailyCategory==="CFB"
+        ? teams.find(t=>t.league==="CFB"&&t.city==="Auburn"&&t.nickname==="Tigers")
+        : byKey["NFL:hou"];
+      if(!target)throw new Error("Featured Day 1 team missing from the catalog");
+      return target;
+    }
     const choices=pool();
-    // A coprime step of 37 avoids repeating a team on consecutive days,
-    // and cycles through every team before any repeat in each category.
+    // Continue the normal daily rotation unchanged from Day 2 onward.
     const index=(hash("SportsPie:daily-v3:"+dailyCategory)+37*(DAILY.puzzleNumber(day)-1))%choices.length;
     return choices[index];
+  }
+  function refreshOpeningDayAttempts(){
+    // Before this fix, Day 1 served different answers. Give existing players
+    // fresh Day 1 attempts and remove *only* those superseded attempts'
+    // aggregate counters, without touching any other date or Unlimited round.
+    if(store.openingDayCorrected)return;
+    for(const scope of ["PRO","CFB"]){
+      const key="local-v1|2026-10-13|"+scope;
+      const previous=store.records[key];
+      if(!previous)continue;
+      const oldStats=store.stats[scope];
+      if(previous.counted&&oldStats){
+        oldStats.played=Math.max(0,(oldStats.played||0)-1);
+        if(previous.won){
+          oldStats.wins=Math.max(0,(oldStats.wins||0)-1);
+          const index=(previous.guesses||[]).length-1;
+          if(index>=0&&index<6&&Array.isArray(oldStats.distribution))
+            oldStats.distribution[index]=Math.max(0,(oldStats.distribution[index]||0)-1);
+          if(oldStats.lastWon==="2026-10-13"){
+            oldStats.lastWon="";
+            oldStats.streak=0;
+          }
+        }
+      }
+      if(previous.optionalHintsEnabled&&store.hintStats?.[scope]){
+        const hintStats=store.hintStats[scope],used=HINTS.count(previous);
+        hintStats.totalUsed=Math.max(0,(hintStats.totalUsed||0)-used);
+        if(used)hintStats.helpedRounds=Math.max(0,(hintStats.helpedRounds||0)-1);
+        if(previous.hintResultCounted){
+          hintStats.completedRounds=Math.max(0,(hintStats.completedRounds||0)-1);
+          hintStats.completedHints=Math.max(0,(hintStats.completedHints||0)-used);
+          if(previous.won){
+            hintStats.trackedWins=Math.max(0,(hintStats.trackedWins||0)-1);
+            if(!used)hintStats.hintFreeWins=Math.max(0,(hintStats.hintFreeWins||0)-1);
+          }
+        }
+      }
+      delete store.records[key];
+    }
+    store.openingDayCorrected=true;
+    save();
   }
   function newEndless(){
     const choices=pool();
@@ -711,6 +761,7 @@
     else shareResult();
   });
 
+  refreshOpeningDayAttempts();
   initGame(false);
   tick();
   setInterval(tick,1000);
