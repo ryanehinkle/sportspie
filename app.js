@@ -154,9 +154,12 @@
   if(!store.palettes || typeof store.palettes!=="object") store.palettes={};
   if(!store.stats || typeof store.stats!=="object") store.stats={};
   if(!Array.isArray(store.recent)) store.recent=[];
+  const DAILY = window.SportsPieDaily;
+  if(!DAILY)throw new Error("The SportsPie local daily clock was not loaded");
   let league = ["ALL","NFL","NHL","NBA","MLB","CFB"].includes(store.league)?store.league:"ALL";
+  let dailyCategory = ["PRO","CFB"].includes(store.dailyCategory)?store.dailyCategory:(league==="CFB"?"CFB":"PRO");
   let mode = ["daily","endless"].includes(store.mode)?store.mode:"daily";
-  let day = new Date().toISOString().slice(0,10);
+  let day = DAILY.localDay();
   let current = null,session = null,palette = null,paletteSource = null,loadSerial = 0;
   let selected = null,options = [],optionIndex = -1,toastTimer = null;
   const MAX_GUESSES=6;
@@ -164,16 +167,22 @@
   function save(){
     try {localStorage.setItem(STORE_KEY, JSON.stringify(store));} catch(e) { /* private browsing */ }
   }
-  function pool(){return league==="ALL" ? teams : teams.filter(t => t.league===league);}
+  function pool(){
+    if(mode==="daily")return teams.filter(t=>dailyCategory==="CFB"?t.league==="CFB":t.league!=="CFB");
+    return league==="ALL" ? teams : teams.filter(t => t.league===league);
+  }
   function hash(str) {
     let h=2166136261;
     for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}
     return h>>>0;
   }
-  function dailyKey(){return day+"|"+league+(league==="ALL"?"|cfb2026":"");}
+  function dailyKey(){return "local-v1|"+day+"|"+dailyCategory;}
   function dailyAnswer(){
     const choices=pool();
-    return choices[hash("SportsPie:v2:"+dailyKey())%choices.length];
+    // A coprime step of 37 avoids repeating a team on consecutive days,
+    // and cycles through every team before any repeat in each category.
+    const index=(hash("SportsPie:daily-v3:"+dailyCategory)+37*(DAILY.puzzleNumber(day)-1))%choices.length;
+    return choices[index];
   }
   function newEndless(){
     const choices=pool();
@@ -187,7 +196,7 @@
   }
   function initGame(forceNew){
     loadSerial++;
-    day=new Date().toISOString().slice(0,10);
+    day=DAILY.localDay();
     if(mode==="daily"){
       current=dailyAnswer();
       const key=dailyKey();
@@ -207,13 +216,15 @@
     $("suggestions").hidden=true;$("teamInput").setAttribute("aria-expanded","false");
     $("pie").classList.remove("ready");
     $("pie").style.background="";
-    $("paletteLegend").innerHTML='<span class="muted">Analyzing the logo&#39;s colors…</span>';
-    $("sourceNote").textContent="Colors are measured from the visible logo pixels.";
+    $("pieSvg").replaceChildren();
+    $("paletteLegend").innerHTML='<span class="muted">Analyzing logo colors…</span>';
     $("feedback").textContent="";
-    $("puzzleTitle").textContent=mode==="daily"?"Today's colors":"Mystery colors";
-    $("roundLabel").textContent=mode==="daily"?"DAILY":"UNLIMITED";
-    $("statusText").textContent=mode==="daily"?"Today's puzzle":"Unlimited practice";
-    $("countdownText").textContent=mode==="daily"?"Resets at 00:00 UTC":"No daily limit";
+    $("puzzleTitle").textContent=mode==="daily"?DAILY.displayDate(day):"Unlimited";
+    $("puzzleSubtitle").textContent=mode==="daily"?"Puzzle #"+DAILY.puzzleNumber(day):"";
+    $("puzzleSubtitle").hidden=mode!=="daily";
+    $("roundLabel").textContent=mode==="daily"?(dailyCategory==="CFB"?"CFB":"PRO"):"";
+    $("roundLabel").hidden=mode!=="daily";
+    $("countdownText").textContent=mode==="daily"?"Next puzzle in --:--:--":"";
     $("attemptLabel").textContent="YOUR GUESSES";
     $("guessHeading").textContent="Who does it belong to?";
     $("playContent").hidden=!!session.complete;
@@ -237,6 +248,12 @@
   function renderControls(){
     document.querySelectorAll("[data-mode]").forEach(b=>{
       const active=b.dataset.mode===mode;b.classList.toggle("active",active);b.setAttribute("aria-pressed",String(active));
+    });
+    $("dailySwitch").hidden=mode!=="daily";
+    $("unlimitedSwitch").hidden=mode!=="endless";
+    $("timerBar").hidden=mode!=="daily";
+    document.querySelectorAll("[data-daily]").forEach(b=>{
+      const active=b.dataset.daily===dailyCategory;b.classList.toggle("active",active);b.setAttribute("aria-pressed",String(active));
     });
     document.querySelectorAll("[data-league]").forEach(b=>{
       const active=b.dataset.league===league;b.classList.toggle("active",active);b.setAttribute("aria-pressed",String(active));
@@ -319,13 +336,13 @@
     palette=null;paletteSource=null;
     $("pie").classList.remove("ready");
     $("pie").style.background="#2b3349";
+    $("pieSvg").replaceChildren();
     const legend=$("paletteLegend");legend.replaceChildren();
     const retry=document.createElement("button");
     retry.type="button";retry.className="retry-palette";
     retry.textContent="Retry loading logo colors ↻";
     retry.addEventListener("click",()=>initGame(false));
     legend.append(retry);
-    $("sourceNote").textContent="Couldn't analyze the primary logo. No estimated colors are shown.";
     $("pie").setAttribute("aria-label","Logo colors unavailable. Retry loading.");
     updateSubmit();
   }
@@ -338,12 +355,36 @@
   }
   function renderPie(){
     if(!palette||!palette.length)return;
-    let progress=0;const stops=[];
-    for(const p of palette){
-      const from=progress;progress+=p.value*100;
-      stops.push(p.color+" "+from.toFixed(4)+"% "+progress.toFixed(4)+"%");
+    const svg=$("pieSvg"),ns="http://www.w3.org/2000/svg";
+    svg.replaceChildren();
+    const radius=99.55,cx=100,cy=100;
+    if(palette.length===1){
+      const circle=document.createElementNS(ns,"circle");
+      circle.setAttribute("cx","100");circle.setAttribute("cy","100");
+      circle.setAttribute("r",String(radius));
+      circle.setAttribute("fill",palette[0].color);
+      svg.append(circle);
+    }else{
+      let angle=-Math.PI/2;
+      for(const segment of palette){
+        const sweep=Math.max(0,Math.min(1,segment.value))*Math.PI*2;
+        if(sweep<.0000001)continue;
+        const a0=angle,a1=angle+sweep;
+        const x0=cx+radius*Math.cos(a0),y0=cy+radius*Math.sin(a0);
+        const x1=cx+radius*Math.cos(a1),y1=cy+radius*Math.sin(a1);
+        const path=document.createElementNS(ns,"path");
+        path.setAttribute("d","M "+cx+" "+cy+" L "+x0+" "+y0+
+          " A "+radius+" "+radius+" 0 "+(sweep>Math.PI?1:0)+" 1 "+x1+" "+y1+" Z");
+        path.setAttribute("fill",segment.color);
+        // Sub-pixel strokes of the same color eliminate renderer seam artifacts.
+        path.setAttribute("stroke",segment.color);
+        path.setAttribute("stroke-width","0.65");
+        path.setAttribute("stroke-linejoin","round");
+        svg.append(path);
+        angle=a1;
+      }
     }
-    $("pie").style.background="conic-gradient(from -90deg,"+stops.join(",")+")";
+    $("pie").style.background="transparent";
     $("pie").classList.remove("ready");void $("pie").offsetWidth;$("pie").classList.add("ready");
     const pct=integerPercentages(palette);
     $("paletteLegend").replaceChildren();
@@ -353,8 +394,8 @@
       const count=document.createElement("span");count.textContent=pct[i]+"%";
       wrap.append(swatch,count);$("paletteLegend").append(wrap);
     });
-    $("pie").setAttribute("aria-label","Mystery logo color breakdown: "+palette.map((p,i)=>pct[i]+" percent "+p.color).join(", "));
-    $("sourceNote").textContent="Original-size logo pixels · transparent background excluded.";
+    $("pie").setAttribute("aria-label","Mystery logo color breakdown: "+
+      palette.map((p,i)=>pct[i]+" percent "+p.color).join(", "));
     updateSubmit();
   }
   function normalize(str){
@@ -466,7 +507,7 @@
     const key=dailyKey();
     if(store.records[key]&&store.records[key].counted)return;
     session.counted=true;
-    const old=store.stats[league]||{played:0,wins:0,streak:0,best:0,lastWon:"",distribution:[0,0,0,0,0,0]};
+    const old=store.stats[dailyCategory]||{played:0,wins:0,streak:0,best:0,lastWon:"",distribution:[0,0,0,0,0,0]};
     old.played++;
     if(won){
       old.wins++;
@@ -479,7 +520,7 @@
     }else{
       old.streak=0;
     }
-    store.stats[league]=old;
+    store.stats[dailyCategory]=old;
   }
   function submitGuess(){
     if(!palette||session.complete)return;
@@ -524,7 +565,7 @@
   }
   function shareResult(){
     const score=session.won?session.guesses.length+"/6":"X/6";
-    const header="SportsPie 🥧 · "+(mode==="daily"?day+" · ":"")+league+" · "+score;
+    const header="SportsPie 🥧 · "+(mode==="daily"?"#"+DAILY.puzzleNumber(day)+" · "+day+" · ":"")+(mode==="daily"?dailyCategory:league)+" · "+score;
     const blocks=session.guesses.map(k=>k===current.key?"🟩":"🟪").join("");
     const url="https://ryanehinkle.github.io/sportspie/";
     const message=header+"\n"+blocks+"\n"+url;
@@ -544,8 +585,8 @@
     toastTimer=setTimeout(()=>$("toast").classList.remove("show"),2700);
   }
   function showStats(){
-    const stats=store.stats[league]||{played:0,wins:0,streak:0,best:0,distribution:[0,0,0,0,0,0]};
-    $("statsScope").textContent="DAILY · "+(league==="ALL"?"ALL LEAGUES":league);
+    const stats=store.stats[dailyCategory]||{played:0,wins:0,streak:0,best:0,distribution:[0,0,0,0,0,0]};
+    $("statsScope").textContent="DAILY · "+(dailyCategory==="PRO"?"NFL / NHL / NBA / MLB":"CFB");
     $("statPlayed").textContent=stats.played;
     $("statWin").textContent=stats.played?Math.round(100*stats.wins/stats.played)+"%":"0%";
     // A winning streak expires if there wasn't a win today or yesterday.
@@ -567,17 +608,26 @@
     $("statsDialog").showModal();
   }
   function tick(){
-    const now=new Date(),updated=now.toISOString().slice(0,10);
-    if(updated!==day){day=updated;if(mode==="daily")initGame(false);}
+    const now=new Date(),updated=DAILY.localDay(now);
+    if(updated!==day){
+      day=updated;
+      if(mode==="daily")initGame(false);
+    }
     if(mode!=="daily")return;
-    const midnight=Date.parse(day+"T00:00:00Z")+86400000;
-    const s=Math.max(0,Math.floor((midnight-now.getTime())/1000));
-    const h=String(Math.floor(s/3600)).padStart(2,"0"),m=String(Math.floor(s%3600/60)).padStart(2,"0"),sec=String(s%60).padStart(2,"0");
-    $("countdownText").textContent="Next in "+h+":"+m+":"+sec;
+    const seconds=Math.max(0,Math.ceil((DAILY.nextMidnight(now)-now.getTime())/1000));
+    const hours=String(Math.floor(seconds/3600)).padStart(2,"0");
+    const minutes=String(Math.floor(seconds%3600/60)).padStart(2,"0");
+    const secs=String(seconds%60).padStart(2,"0");
+    $("countdownText").textContent="Next puzzle in "+hours+":"+minutes+":"+secs;
   }
   document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",()=>{
     if(mode===b.dataset.mode)return;
     mode=b.dataset.mode;store.mode=mode;initGame(false);tick();
+  }));
+  document.querySelectorAll("[data-daily]").forEach(b=>b.addEventListener("click",()=>{
+    if(dailyCategory===b.dataset.daily)return;
+    dailyCategory=b.dataset.daily;store.dailyCategory=dailyCategory;
+    initGame(false);tick();
   }));
   document.querySelectorAll("[data-league]").forEach(b=>b.addEventListener("click",()=>{
     if(league===b.dataset.league)return;
@@ -626,6 +676,8 @@
   initGame(false);
   tick();
   setInterval(tick,1000);
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)tick();});
+  window.addEventListener("focus",tick);
   // No runtime logo swapping: build-time verification produces one consistent logo per team.
-  console.info("SportsPie loaded:",teams.length,"teams across NFL, NHL, NBA, and MLB.");
+  console.info("SportsPie loaded:",teams.length,"teams across NFL, NHL, NBA, MLB and CFB.");
 })();
