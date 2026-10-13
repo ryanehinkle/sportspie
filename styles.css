@@ -275,3 +275,7 @@ html,body{max-width:100%;overflow-x:hidden}
   .hint-toolbar-note{font-size:9px}
   .hint-button{padding:7px 10px}
 }
+
+/* Hint rows include explicit numbering; don't add an extra bullet. */
+.hint-item:before{content:none}
+.hint-item{display:block;padding:6px 0}
