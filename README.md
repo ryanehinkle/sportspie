@@ -11,7 +11,7 @@ Guess the professional or FBS college football team from **the color proportions
 - Puzzles reset at **12:00 AM in the player's local timezone**, not UTC. The first puzzle is **#1 on October 13, 2026**; the number increases daily.
 - **Unlimited:** play as many randomized puzzles as you like, with individual NFL, NHL, NBA, MLB, CFB and All filters.
 - Searchable team autocomplete, **optional click-to-reveal hints** (up to five per round), six-guess limit, reveal screen, result sharing, and locally saved daily win statistics / streaks.
-- Hints never reveal themselves after wrong guesses. A **Hint** button reveals each clue only on demand, including before the first guess.
+- Hints never reveal themselves after wrong guesses. A **Hint** button reveals each clue only on demand, including before the first guess. Pro teams have five optional hints. CFB teams have four (school initial, nickname length, nickname initial, and finally the full nickname); the redundant league and final location clues are not used for CFB.
 - Saved hint tracking includes hints used, rounds using hints, hint-free wins, and average hints per completed round, separately for Pro, CFB, and each Unlimited league filter. Per-round usage persists across refreshes and is included in the end screen and shared results. Previous finished games are not retrospectively scored as hint-free.
 - Responsive mobile and desktop layout, keyboard support, and reduced-motion support.
 
