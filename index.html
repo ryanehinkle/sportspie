@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="./styles.css">
   <script src="./palette.js" defer></script>
   <script src="./daily.js" defer></script>
+  <script src="./hints.js" defer></script>
   <script src="./cfb-teams.js" defer></script>
   <script src="./logo-sources.js" defer></script>
   <script src="./app.js" defer></script>
@@ -104,8 +105,14 @@
             </div>
             <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
           </div>
+          <div class="hint-toolbar">
+            <button class="hint-button" id="hintBtn" type="button" aria-label="Reveal the next hint">
+              <span aria-hidden="true">✦</span> Hint <span class="hint-counter" id="hintCounter">0/5</span>
+            </button>
+            <span class="hint-toolbar-note">Optional · counts toward stats</span>
+          </div>
           <div class="guesses" id="guessList" aria-live="polite"><div class="empty-state" id="emptyState"><div class="empty-symbol" aria-hidden="true">◎</div><span>Your guesses will show up here.</span></div></div>
-          <div class="hints" id="hintBox" hidden><div class="hints-title"><span>✦</span> CLUES UNLOCKED</div><div id="hintList"></div></div>
+          <div class="hints" id="hintBox" hidden><div class="hints-title"><span>✦</span> YOUR HINTS</div><div id="hintList"></div></div>
         </div>
         <div class="end-screen" id="endScreen" hidden aria-live="polite">
           <div class="result-icon" id="resultIcon">✓</div>
@@ -131,7 +138,8 @@
     <p>Guess an NFL, NHL, NBA, MLB, or FBS college football team using only the color proportions of its primary logo. The logo is revealed when the round ends.</p>
     <div class="rule-item"><span class="rule-num">01</span><div><strong>Study the colors</strong><p>Each slice represents the proportion of a color in the team's logo. Transparent backgrounds don't count.</p></div></div>
     <div class="rule-item"><span class="rule-num">02</span><div><strong>Name that team</strong><p>Choose a team from the search list. You get six guesses per puzzle.</p></div></div>
-    <div class="rule-item"><span class="rule-num">03</span><div><strong>Get closer</strong><p>Wrong guesses reveal clues. Play one daily Pro puzzle and one daily CFB puzzle, both resetting at your local midnight, or practice in Unlimited.</p></div></div>
+    <div class="rule-item"><span class="rule-num">03</span><div><strong>Hints are optional</strong><p>Click Hint to reveal one clue at a time, up to five. You can solve without using any. Hint use is saved in your stats.</p></div></div>
+    <p class="rules-extra">Play one daily Pro and one daily CFB puzzle, resetting at your local midnight, or practice in Unlimited.</p>
     <button class="modal-done" type="button" data-close>Let's play <span>→</span></button>
   </dialog>
 
@@ -143,7 +151,16 @@
       <div><strong id="statStreak">0</strong><span>Streak</span></div><div><strong id="statBest">0</strong><span>Best</span></div>
     </div>
     <div class="stats-distribution"><div class="mini-label">GUESS DISTRIBUTION</div><div id="distribution"></div></div>
-    <p class="stats-note">Daily results are saved on this device. Pro and CFB have separate daily puzzles, results and streaks.</p>
+    <div class="hint-stat-section">
+      <div class="mini-label">HINT USAGE</div>
+      <div class="hint-stats-grid">
+        <div><strong id="statHintsUsed">0</strong><span>Hints used</span></div>
+        <div><strong id="statHintFreeWins">0</strong><span>No-hint wins</span></div>
+        <div><strong id="statAvgHints">0.0</strong><span>Avg. / game</span></div>
+        <div><strong id="statHelpedRounds">0</strong><span>Rounds helped</span></div>
+      </div>
+    </div>
+    <p class="stats-note">Results and hints are saved on this device, with separate stats for Pro, CFB and Unlimited. Hint history starts with this update.</p>
     <button class="modal-done" type="button" data-close>Back to game <span>→</span></button>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
