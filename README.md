@@ -7,9 +7,9 @@ Guess the professional or FBS college football team from **the color proportions
 ## Gameplay
 
 - 262 teams across the **NFL (32), NHL (32), NBA (30), MLB (30), and 2026 FBS college football (138)**.
-- Filter by NFL, NHL, NBA, MLB, or CFB, or play with all five leagues combined.
-- **Daily challenge:** one repeatable puzzle per UTC day and league selection, with six guesses. Six independent daily puzzles (All / NFL / NHL / NBA / MLB / CFB).
-- **Unlimited:** keep playing randomly chosen logo puzzles.
+- **Daily challenge:** just two categories: **Pro** (NFL / NHL / NBA / MLB) and **CFB** (all 138 FBS schools). Each has one repeatable six-guess daily puzzle.
+- Puzzles reset at **12:00 AM in the player's local timezone**, not UTC. The first puzzle is **#1 on October 13, 2026**; the number increases daily.
+- **Unlimited:** play as many randomized puzzles as you like, with individual NFL, NHL, NBA, MLB, CFB and All filters.
 - Searchable team autocomplete, progressively unlocked clues, six-guess limit, reveal screen, result sharing, and locally saved daily win statistics / streaks.
 - Responsive mobile and desktop layout, keyboard support, and reduced-motion support.
 
@@ -36,3 +36,7 @@ SportsPie is an independent, unofficial fan project. Team names and logos belong
 ## Keeping team images correct
 
 Run `node scripts/build-assets.mjs` from the repository root before serving locally. This generates `cfb-teams.js`, `logo-sources.js`, and `assets/logos/{league}/{id}.png`. GitHub Actions runs the same step and **fails deployment if any primary image is unavailable** rather than showing a broken or mismatched logo. The source list of 138 FBS programs lives in `data/fbs-2026.json`; adapt it annually when teams change divisions. Logo/regression validation runs with `node --test tests/palette.test.cjs tests/team-catalog.test.cjs` after assets are built.
+
+## Display
+
+The pie uses crisp, antialiased SVG arcs rather than rasterized CSS gradient wedges. Desktop gameplay fits inside the visible browser height (no page scrolling); on narrow phone screens the two panels stack to keep the controls usable. The larger color-percentage legend sits directly below the pie, and a centered countdown displays the next **local** midnight. The game header shows the local date and puzzle number in Daily mode; Unlimited uses a minimal single title.
