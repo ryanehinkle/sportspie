@@ -12,6 +12,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%236f7cff'/%3E%3Cpath d='M32 32V4A28 28 0 0 1 59 38Z' fill='%23ffb45e'/%3E%3Cpath d='M32 32 59 38A28 28 0 0 1 14 54Z' fill='%23f5749a'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./styles.css">
   <script src="./palette.js" defer></script>
+  <script src="./daily.js" defer></script>
   <script src="./cfb-teams.js" defer></script>
   <script src="./logo-sources.js" defer></script>
   <script src="./app.js" defer></script>
@@ -45,8 +46,12 @@
         <button type="button" class="mode active" data-mode="daily" aria-pressed="true">Daily challenge</button>
         <button type="button" class="mode" data-mode="endless" aria-pressed="false">Unlimited <span class="infinity" aria-hidden="true">∞</span></button>
       </div>
-      <div class="league-switch" role="group" aria-label="Choose league">
-        <button class="league active" type="button" data-league="ALL" aria-pressed="true">All leagues</button>
+      <div class="league-switch daily-switch" id="dailySwitch" role="group" aria-label="Daily puzzle category">
+        <button class="league active" type="button" data-daily="PRO" aria-pressed="true">NFL / NHL / NBA / MLB</button>
+        <button class="league" type="button" data-daily="CFB" aria-pressed="false">CFB</button>
+      </div>
+      <div class="league-switch" id="unlimitedSwitch" role="group" aria-label="Choose league" hidden>
+        <button class="league active" type="button" data-league="ALL" aria-pressed="true">All</button>
         <button class="league" type="button" data-league="NFL" aria-pressed="false">NFL</button>
         <button class="league" type="button" data-league="NHL" aria-pressed="false">NHL</button>
         <button class="league" type="button" data-league="NBA" aria-pressed="false">NBA</button>
@@ -58,23 +63,20 @@
     <div class="game-layout">
       <section class="panel visual-panel" aria-label="Mystery logo colors">
         <div class="panel-top">
-          <div><span class="mini-label">MYSTERY LOGO</span><div class="puzzle-title" id="puzzleTitle">Today's colors</div></div>
+          <div class="puzzle-heading"><div class="puzzle-title" id="puzzleTitle">October 13, 2026</div><div class="puzzle-subtitle" id="puzzleSubtitle">Puzzle #1</div></div>
           <span class="round-badge" id="roundLabel">DAILY</span>
         </div>
         <div class="pie-stage">
           <div class="pie-orbit" aria-hidden="true"></div>
           <div class="pie-ring">
             <div class="pie" id="pie" role="img" aria-label="Pie chart of the mystery team logo's colors">
+              <svg id="pieSvg" class="pie-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
               <div class="pie-shimmer"></div>
             </div>
           </div>
         </div>
         <div class="palette-legend" id="paletteLegend" aria-label="Color proportions"><span class="muted">Analyzing the logo's colors…</span></div>
-        <p class="source-note" id="sourceNote">Colors are measured from the visible logo pixels.</p>
-        <div class="under-pie">
-          <div class="small-status"><span class="small-dot"></span><span id="statusText">Today's puzzle</span></div>
-          <span id="countdownText">Resets at 00:00 UTC</span>
-        </div>
+        <div class="under-pie" id="timerBar"><span id="countdownText">Next puzzle in 00:00:00</span></div>
       </section>
 
       <section class="panel play-panel" aria-label="Guess the team">
@@ -120,19 +122,16 @@
       </section>
     </div>
 
-    <footer class="footer">
-      <span>SportsPie <span class="footer-mark">✳</span> A little game for sports fans.</span>
-      <span>Unofficial fan project · NFL / NHL / NBA / MLB / CFB</span>
-    </footer>
+
   </main>
 
   <dialog class="modal" id="howDialog" aria-labelledby="howTitle">
     <button class="close-modal" type="button" data-close aria-label="Close">×</button>
     <div class="modal-eyebrow">THE RULES</div><h2 id="howTitle">How to play</h2>
-    <p>Every pie is created from the actual colors in a professional sports team's logo. The logo stays hidden until your game ends.</p>
-    <div class="rule-item"><span class="rule-num">01</span><div><strong>Study the colors</strong><p>The size of each slice shows its share of the logo's visible pixels. Transparent background pixels don't count.</p></div></div>
-    <div class="rule-item"><span class="rule-num">02</span><div><strong>Name that team</strong><p>Search all teams, or filter to the NFL, NHL, NBA, MLB, or CFB. You have six guesses per puzzle.</p></div></div>
-    <div class="rule-item"><span class="rule-num">03</span><div><strong>Get closer</strong><p>Wrong guesses reveal new clues. Solve a daily puzzle or practice as much as you like in Unlimited.</p></div></div>
+    <p>Guess an NFL, NHL, NBA, MLB, or FBS college football team using only the color proportions of its primary logo. The logo is revealed when the round ends.</p>
+    <div class="rule-item"><span class="rule-num">01</span><div><strong>Study the colors</strong><p>Each slice represents the proportion of a color in the team's logo. Transparent backgrounds don't count.</p></div></div>
+    <div class="rule-item"><span class="rule-num">02</span><div><strong>Name that team</strong><p>Choose a team from the search list. You get six guesses per puzzle.</p></div></div>
+    <div class="rule-item"><span class="rule-num">03</span><div><strong>Get closer</strong><p>Wrong guesses reveal clues. Play one daily Pro puzzle and one daily CFB puzzle, both resetting at your local midnight, or practice in Unlimited.</p></div></div>
     <button class="modal-done" type="button" data-close>Let's play <span>→</span></button>
   </dialog>
 
@@ -144,7 +143,7 @@
       <div><strong id="statStreak">0</strong><span>Streak</span></div><div><strong id="statBest">0</strong><span>Best</span></div>
     </div>
     <div class="stats-distribution"><div class="mini-label">GUESS DISTRIBUTION</div><div id="distribution"></div></div>
-    <p class="stats-note">Daily results are saved locally on this device. Each league has its own daily puzzle and stats.</p>
+    <p class="stats-note">Daily results are saved on this device. Pro and CFB have separate daily puzzles, results and streaks.</p>
     <button class="modal-done" type="button" data-close>Back to game <span>→</span></button>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
